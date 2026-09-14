@@ -35,7 +35,12 @@ The bundled script `scripts/sync_ollama_models.py`:
    becomes a key, preserving any existing per-model settings and defaulting
    the display `name` to the model id. The `npm`, `name`, and `options`
    fields of the provider are only added if absent.
-5. Writes the config back, preserving the original file format
+5. For each model, runs `ollama show <model>` to read its maximum context
+   length and sets `limit.context` to that value (so OpenCode sends the
+   correct `num_ctx` to Ollama instead of a conservative default). If a
+   valid `limit.output` already exists it is kept; otherwise it defaults to
+   a quarter of the context length.
+6. Writes the config back, preserving the original file format
    (`.json` or `.jsonc`).
 
 ## Running it

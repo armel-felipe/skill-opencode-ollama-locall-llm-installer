@@ -78,6 +78,24 @@ def get_ollama_models() -> list[str]:
     return models
 
 
+def get_model_context(model: str) -> int | None:
+    """Return the model's maximum context length from `ollama show`.
+
+    Parses the `context length` line, e.g. `context length      262144`.
+    Returns None if it cannot be determined.
+    """
+    try:
+        out = subprocess.run(
+            ["ollama", "show", model], capture_output=True, text=True, check=True
+        ).stdout
+    except (subprocess.CalledProcessError, FileNotFoundError):
+        return None
+    m = re.search(r"context\s+length\s+(\d+)", out)
+    if not m:
+        return None
+    return int(m.group(1))
+
+
 def main() -> None:
     config_path = find_config()
     if config_path is None:
@@ -115,13 +133,21 @@ def main() -> None:
         entry = existing.get(m, {})
         if not isinstance(entry, dict):
             entry = {}
-        limit = entry.get("limit")
-        if isinstance(limit, dict):
+        # Always set limit.context to the model's maximum context length.
+        ctx = get_model_context(m)
+        if ctx is not None:
+            limit = entry.get("limit")
+            if not isinstance(limit, dict):
+                limit = {}
+            limit["context"] = ctx
+            # Keep an existing output limit if present and valid; otherwise
+            # default to a reasonable fraction of the context.
             if not (
-                isinstance(limit.get("context"), (int, float))
-                and isinstance(limit.get("output"), (int, float))
+                isinstance(limit.get("output"), (int, float))
+                and limit["output"] > 0
             ):
-                entry.pop("limit", None)
+                limit["output"] = max(1, ctx // 4)
+            entry["limit"] = limit
         entry.setdefault("name", m)
         new_models[m] = entry
 
