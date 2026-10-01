@@ -1,7 +1,8 @@
 # locall-llm-installer
 
 OpenCode skill that syncs your locally installed Ollama models into the global
-opencode config (`~/.config/opencode/opencode.json` or `opencode.jsonc`).
+OpenCode config (`~/.config/opencode/opencode.json` or `opencode.jsonc`) and,
+when present, pi-agent's `~/.pi/agent/models.json`.
 
 It updates **only** the `provider.ollama.models` section — every other key in
 your config is left untouched.
@@ -10,6 +11,7 @@ your config is left untouched.
 
 - Runs `ollama list` to capture every installed model.
 - Updates the `provider.ollama.models` map in the global opencode config.
+- Updates the `providers.ollama.models` list in pi-agent when its config exists.
 - Preserves any existing per-model settings (e.g. `limit`, `options`).
 - Removes invalid `limit` entries (missing `context` or `output`), which
   would otherwise prevent opencode from starting.
@@ -22,6 +24,7 @@ your config is left untouched.
 - Python 3.10+.
 - OpenCode with a global config at `~/.config/opencode/opencode.json` or
   `opencode.jsonc`.
+- pi-agent is optional; if `~/.pi/agent/models.json` is absent, it is skipped.
 
 ## Usage
 
@@ -50,7 +53,7 @@ python ~/.agents/skills/locall-llm-installer/scripts/sync_ollama_models.py
 python "$env:USERPROFILE\.agents\skills\locall-llm-installer\scripts\sync_ollama_models.py"
 ```
 
-The script prints the config path it updated and the list of synced models.
+The script prints the config paths it updated and the list of synced models.
 If `ollama list` fails or returns nothing, it exits with an error and leaves
 the config untouched.
 

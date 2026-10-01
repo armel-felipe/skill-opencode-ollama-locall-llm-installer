@@ -1,10 +1,10 @@
 #!/usr/bin/env python3
-"""Sync installed Ollama models into the global opencode config.
+"""Sync installed Ollama models into OpenCode and pi-agent configs.
 
 Reads the model list from `ollama list`, then updates only the
 `provider.ollama.models` section of the opencode config file
 (~/.config/opencode/opencode.json or opencode.jsonc, whichever exists).
-All other keys in the config are left untouched.
+All other keys in the configs are left untouched.
 """
 
 import json
@@ -15,6 +15,7 @@ import sys
 from pathlib import Path
 
 CONFIG_DIR = Path.home() / ".config" / "opencode"
+PI_CONFIG = Path.home() / ".pi" / "agent" / "models.json"
 
 
 def find_config() -> Path | None:
@@ -74,7 +75,9 @@ def get_ollama_models() -> list[str]:
     models = []
     for line in out.splitlines()[1:]:
         if line.strip():
-            models.append(line.split()[0])
+            model = line.split()[0]
+            if model not in models:
+                models.append(model)
     return models
 
 
@@ -94,6 +97,46 @@ def get_model_context(model: str) -> int | None:
     if not m:
         return None
     return int(m.group(1))
+
+
+def sync_pi_config(config_path: Path, models: list[str]) -> bool:
+    """Sync Ollama model IDs into pi-agent's optional models.json."""
+    if not config_path.exists():
+        return False
+
+    try:
+        config = json.loads(config_path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError) as e:
+        print(f"warning: could not parse pi-agent config {config_path}: {e}", file=sys.stderr)
+        return False
+
+    providers = config.setdefault("providers", {})
+    ollama = providers.setdefault("ollama", {})
+    existing = ollama.get("models", [])
+    if not isinstance(existing, list):
+        existing = []
+    existing_by_id = {
+        item.get("id"): item
+        for item in existing
+        if isinstance(item, dict) and isinstance(item.get("id"), str)
+    }
+
+    synced = []
+    for model in models:
+        entry = existing_by_id.get(model)
+        if not isinstance(entry, dict):
+            entry = {
+                "id": model,
+                "name": model,
+                "reasoning": False,
+                "input": ["text"],
+            }
+        synced.append(entry)
+    ollama["models"] = synced
+    config_path.write_text(
+        json.dumps(config, indent=2, ensure_ascii=False) + "\n", encoding="utf-8"
+    )
+    return True
 
 
 def main() -> None:
@@ -168,6 +211,11 @@ def main() -> None:
     config_path.write_text(body + "\n", encoding="utf-8")
     print(f"updated {config_path}")
     print(f"synced {len(models)} model(s): {', '.join(models)}")
+
+    if sync_pi_config(PI_CONFIG, models):
+        print(f"updated {PI_CONFIG}")
+    else:
+        print(f"skipped {PI_CONFIG} (file not found)")
 
 
 if __name__ == "__main__":
