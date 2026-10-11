@@ -29,10 +29,12 @@ files remain unchanged.
 
 ## Run
 
-Set `LOCAL_LLM_MAC_HOST` and/or `LOCAL_LLM_GAMES_HOST` to your private
-hostnames/IPs for automatic defaults. Without either variable no endpoint is
-queried. Run `python3 scripts/sync_ollama_models.py` from the canonical skill
-root in this repository or from the installed skill directory. It updates only
+The script reads supported variables from `.env` in the current working
+directory. Set `LOCAL_LLM_MAC_HOST` and/or `LOCAL_LLM_GAMES_HOST` there to your
+private hostnames/IPs; already-exported shell values take precedence. Set
+`LOCAL_LLM_ENV_FILE` to use another path. Without a configured host, no
+endpoint is queried. Run `python3 scripts/sync_ollama_models.py` from the
+canonical skill root in this repository or from the installed skill directory. It updates only
 providers that returned models in OpenCode and, if present, pi-agent. Existing
 settings for available model IDs are preserved, unrelated providers are not
 modified, and embedding model IDs are excluded.

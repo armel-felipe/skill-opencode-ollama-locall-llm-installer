@@ -33,10 +33,21 @@ Python dependencies.
 python3 ~/.agents/skills/locall-llm-installer/scripts/sync_ollama_models.py
 ```
 
-Set `LOCAL_LLM_MAC_HOST` and/or `LOCAL_LLM_GAMES_HOST` to your own private
-hostname/IP before running. Without these variables, pass explicit
-`--endpoint NAME=URL` values; the skill does not hard-code private network
-addresses in this public repository.
+By default, the script reads `LOCAL_LLM_MAC_HOST`, `LOCAL_LLM_GAMES_HOST`,
+and optionally `LOCAL_LLM_API_KEY` from `.env` in the current working
+directory. Already-exported shell values override `.env`; set
+`LOCAL_LLM_ENV_FILE` to read a different file. Example private `.env`:
+
+```dotenv
+LOCAL_LLM_MAC_HOST=your-mac-host-or-private-ip
+LOCAL_LLM_GAMES_HOST=your-games-host-or-private-ip
+# Optional, only if an endpoint requires bearer authentication:
+# LOCAL_LLM_API_KEY=your-local-api-key
+```
+
+Do not commit `.env` or place actual network addresses or credentials in this
+public repository. The repo ignores `.env`; `.env.example` contains placeholders
+only. Without configured hosts, pass explicit `--endpoint NAME=URL` values.
 
 The script updates discovered endpoint providers in `~/.config/opencode/` and,
 if it exists, `~/.pi/agent/models.json`. Existing settings for models still

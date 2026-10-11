@@ -35,8 +35,11 @@ From the skill's root directory:
 python3 scripts/sync_ollama_models.py
 ```
 
-Set `LOCAL_LLM_MAC_HOST` and/or `LOCAL_LLM_GAMES_HOST` to your private hostnames
-or IPs to enable default targets. If neither is set, no endpoint is queried.
+The script reads the supported keys from `.env` in the current working
+directory; set `LOCAL_LLM_MAC_HOST` and/or `LOCAL_LLM_GAMES_HOST` there to your
+private hostnames/IPs. Values already exported in the shell take precedence.
+Use `LOCAL_LLM_ENV_FILE` to point at a different `.env` path. If neither host
+is configured, no endpoint is queried.
 The script probes each configured host's Ollama and LM Studio ports, then
 updates only endpoint providers that returned models in
 `~/.config/opencode/opencode.json[c]` and in
@@ -55,8 +58,9 @@ python3 scripts/sync_ollama_models.py \
   --endpoint games-lmstudio=http://games-host:1234
 ```
 
-If an endpoint needs bearer authentication, set `LOCAL_LLM_API_KEY` in the
-environment. Never store credentials in the skill or repository.
+If an endpoint needs bearer authentication, `LOCAL_LLM_API_KEY` may also be
+stored in the private `.env`. Never store `.env` itself, actual host addresses,
+or credentials in the skill repository.
 
 ## After syncing
 

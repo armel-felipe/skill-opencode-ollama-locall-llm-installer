@@ -1,6 +1,7 @@
 import importlib.util
 import json
 import os
+import tempfile
 import threading
 import unittest
 from unittest.mock import patch
@@ -69,6 +70,26 @@ class ModelsEndpointTests(unittest.TestCase):
                 "games-ollama": "http://games-host:11434",
                 "games-lmstudio": "http://games-host:1234",
             })
+
+    def test_dotenv_loads_only_local_endpoint_settings(self):
+        with tempfile.TemporaryDirectory() as directory:
+            env_path = Path(directory) / ".env"
+            env_path.write_text(
+                "# local-only\nLOCAL_LLM_MAC_HOST=mac-tailnet\nOTHER_SECRET=do-not-load\n",
+                encoding="utf-8",
+            )
+            with patch.dict(os.environ, {}, clear=True):
+                sync_models.load_env_file(env_path)
+                self.assertEqual(os.environ["LOCAL_LLM_MAC_HOST"], "mac-tailnet")
+                self.assertNotIn("OTHER_SECRET", os.environ)
+
+    def test_existing_environment_values_override_dotenv(self):
+        with tempfile.TemporaryDirectory() as directory:
+            env_path = Path(directory) / ".env"
+            env_path.write_text("LOCAL_LLM_MAC_HOST=from-file\n", encoding="utf-8")
+            with patch.dict(os.environ, {"LOCAL_LLM_MAC_HOST": "from-shell"}, clear=True):
+                sync_models.load_env_file(env_path)
+                self.assertEqual(os.environ["LOCAL_LLM_MAC_HOST"], "from-shell")
 
 
 if __name__ == "__main__":

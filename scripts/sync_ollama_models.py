@@ -18,6 +18,37 @@ from pathlib import Path
 
 CONFIG_DIR = Path.home() / ".config" / "opencode"
 PI_CONFIG = Path.home() / ".pi" / "agent" / "models.json"
+DOTENV_KEYS = {"LOCAL_LLM_MAC_HOST", "LOCAL_LLM_GAMES_HOST", "LOCAL_LLM_API_KEY"}
+
+
+def load_env_file(path: Path) -> None:
+    """Load supported local settings only; never execute or print dotenv data."""
+    try:
+        lines = path.read_text(encoding="utf-8").splitlines()
+    except FileNotFoundError:
+        return
+    except OSError as exc:
+        print(f"warning: could not read dotenv file {path}: {exc}", file=sys.stderr)
+        return
+
+    for line in lines:
+        line = line.strip()
+        if not line or line.startswith("#"):
+            continue
+        if line.startswith("export "):
+            line = line[7:].lstrip()
+        key, separator, value = line.partition("=")
+        key = key.strip()
+        if not separator or key not in DOTENV_KEYS or key in os.environ:
+            continue
+        value = value.strip()
+        if len(value) >= 2 and value[0] == value[-1] and value[0] in ("'", '"'):
+            value = value[1:-1]
+        else:
+            value = value.split(" #", 1)[0].rstrip()
+        os.environ[key] = value
+
+
 def default_endpoints() -> dict[str, str]:
     """Build optional host defaults from private environment configuration."""
     endpoints = {}
@@ -171,6 +202,8 @@ def main() -> int:
     parser = argparse.ArgumentParser(description="Sync available local LLMs to OpenCode and pi-agent.")
     parser.add_argument("--endpoint", action="append", type=parse_endpoint, help="override defaults; repeat as NAME=http://host:port")
     args = parser.parse_args()
+    dotenv_path = Path(os.environ.get("LOCAL_LLM_ENV_FILE", Path.cwd() / ".env")).expanduser()
+    load_env_file(dotenv_path)
     endpoints = dict(args.endpoint) if args.endpoint else default_endpoints()
     if not endpoints:
         print("No endpoints configured. Set LOCAL_LLM_MAC_HOST/LOCAL_LLM_GAMES_HOST or pass --endpoint.", file=sys.stderr)
