@@ -17,10 +17,10 @@ loads models, or downloads models.
 
 | Provider ID | Host | URL queried |
 |---|---|---|
-| `mac-ollama` | Mac host, Ollama `11434` | `http://$LOCAL_LLM_MAC_HOST:11434/v1/models` |
-| `mac-lmstudio` | Mac host, LM Studio `1234` | `http://$LOCAL_LLM_MAC_HOST:1234/v1/models` |
-| `games-ollama` | Games host, Ollama `11434` | `http://$LOCAL_LLM_GAMES_HOST:11434/v1/models` |
-| `games-lmstudio` | Games host, LM Studio `1234` | `http://$LOCAL_LLM_GAMES_HOST:1234/v1/models` |
+| `mac-ollama` | host passed with `--mac-host`, Ollama `11434` | `http://HOST:11434/v1/models` |
+| `mac-lmstudio` | host passed with `--mac-host`, LM Studio `1234` | `http://HOST:1234/v1/models` |
+| `games-ollama` | host passed with `--games-host`, Ollama `11434` | `http://HOST:11434/v1/models` |
+| `games-lmstudio` | host passed with `--games-host`, LM Studio `1234` | `http://HOST:1234/v1/models` |
 
 If an endpoint is unreachable, invalid, or has no usable chat models, skip it.
 Do not overwrite its existing config and **do not start a server or load/pull a
@@ -29,19 +29,18 @@ files remain unchanged.
 
 ## Run
 
-The script reads supported variables from `.env` in the current working
-directory. Set `LOCAL_LLM_MAC_HOST` and/or `LOCAL_LLM_GAMES_HOST` there to your
-private hostnames/IPs; already-exported shell values take precedence. Set
-`LOCAL_LLM_ENV_FILE` to use another path. Without a configured host, no
-endpoint is queried. Run `python3 scripts/sync_ollama_models.py` from the
-canonical skill root in this repository or from the installed skill directory. It updates only
-providers that returned models in OpenCode and, if present, pi-agent. Existing
+Pass a LAN IP, Tailscale IP, or hostname using `--mac-host` and/or
+`--games-host`; each host is queried on ports `11434` and `1234`. Host values
+are run-time arguments, not stored in skill files. With no hosts or custom
+endpoints, nothing is queried. Run `python3 scripts/sync_ollama_models.py`
+from the canonical skill root or installed skill directory. It updates only
+providers with returned models in OpenCode and, if present, pi-agent. Existing
 settings for available model IDs are preserved, unrelated providers are not
-modified, and embedding model IDs are excluded.
+modified, and embedding IDs are excluded.
 
-For custom targets, repeat `--endpoint NAME=URL`; any override list replaces the
-default set. Set `LOCAL_LLM_API_KEY` in the environment if bearer auth is
-required. Never store credentials in skill files.
+For custom URLs/ports, repeat `--endpoint NAME=URL`; do not combine that mode
+with the host flags. Set `LOCAL_LLM_API_KEY` in the environment only if bearer
+authentication is needed. Never store credentials in skill files.
 
 Refresh OpenCode `/models` or restart OpenCode and pi-agent after syncing. The
 script never starts services, loads/pulls models, or changes network settings.

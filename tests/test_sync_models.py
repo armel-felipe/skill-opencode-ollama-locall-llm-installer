@@ -1,10 +1,7 @@
 import importlib.util
 import json
-import os
-import tempfile
 import threading
 import unittest
-from unittest.mock import patch
 from http.server import BaseHTTPRequestHandler, HTTPServer
 from pathlib import Path
 
@@ -62,34 +59,16 @@ class ModelsEndpointTests(unittest.TestCase):
         self.assertEqual(list(config["provider"]["mac-ollama"]["models"]), ["llama"])
         self.assertIn("unrelated", config["provider"])
 
-    def test_private_host_defaults_come_from_environment_not_repo_constants(self):
-        with patch.dict(os.environ, {"LOCAL_LLM_MAC_HOST": "mac-host", "LOCAL_LLM_GAMES_HOST": "games-host"}):
-            self.assertEqual(sync_models.default_endpoints(), {
-                "mac-ollama": "http://mac-host:11434",
-                "mac-lmstudio": "http://mac-host:1234",
-                "games-ollama": "http://games-host:11434",
-                "games-lmstudio": "http://games-host:1234",
-            })
+    def test_host_arguments_expand_to_both_service_ports(self):
+        self.assertEqual(sync_models.default_endpoints("192.0.2.10", "games.lan"), {
+            "mac-ollama": "http://192.0.2.10:11434",
+            "mac-lmstudio": "http://192.0.2.10:1234",
+            "games-ollama": "http://games.lan:11434",
+            "games-lmstudio": "http://games.lan:1234",
+        })
 
-    def test_dotenv_loads_only_local_endpoint_settings(self):
-        with tempfile.TemporaryDirectory() as directory:
-            env_path = Path(directory) / ".env"
-            env_path.write_text(
-                "# local-only\nLOCAL_LLM_MAC_HOST=mac-tailnet\nOTHER_SECRET=do-not-load\n",
-                encoding="utf-8",
-            )
-            with patch.dict(os.environ, {}, clear=True):
-                sync_models.load_env_file(env_path)
-                self.assertEqual(os.environ["LOCAL_LLM_MAC_HOST"], "mac-tailnet")
-                self.assertNotIn("OTHER_SECRET", os.environ)
-
-    def test_existing_environment_values_override_dotenv(self):
-        with tempfile.TemporaryDirectory() as directory:
-            env_path = Path(directory) / ".env"
-            env_path.write_text("LOCAL_LLM_MAC_HOST=from-file\n", encoding="utf-8")
-            with patch.dict(os.environ, {"LOCAL_LLM_MAC_HOST": "from-shell"}, clear=True):
-                sync_models.load_env_file(env_path)
-                self.assertEqual(os.environ["LOCAL_LLM_MAC_HOST"], "from-shell")
+    def test_no_host_arguments_produce_no_default_endpoints(self):
+        self.assertEqual(sync_models.default_endpoints(), {})
 
 
 if __name__ == "__main__":

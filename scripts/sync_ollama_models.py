@@ -11,6 +11,7 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import re
 import sys
 import urllib.error
 import urllib.request
@@ -18,42 +19,17 @@ from pathlib import Path
 
 CONFIG_DIR = Path.home() / ".config" / "opencode"
 PI_CONFIG = Path.home() / ".pi" / "agent" / "models.json"
-DOTENV_KEYS = {"LOCAL_LLM_MAC_HOST", "LOCAL_LLM_GAMES_HOST", "LOCAL_LLM_API_KEY"}
+def parse_host(value: str) -> str:
+    host = value.strip()
+    if not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9.-]*", host):
+        raise argparse.ArgumentTypeError("host must be a LAN/Tailscale IP or hostname without scheme or port")
+    return host
 
 
-def load_env_file(path: Path) -> None:
-    """Load supported local settings only; never execute or print dotenv data."""
-    try:
-        lines = path.read_text(encoding="utf-8").splitlines()
-    except FileNotFoundError:
-        return
-    except OSError as exc:
-        print(f"warning: could not read dotenv file {path}: {exc}", file=sys.stderr)
-        return
-
-    for line in lines:
-        line = line.strip()
-        if not line or line.startswith("#"):
-            continue
-        if line.startswith("export "):
-            line = line[7:].lstrip()
-        key, separator, value = line.partition("=")
-        key = key.strip()
-        if not separator or key not in DOTENV_KEYS or key in os.environ:
-            continue
-        value = value.strip()
-        if len(value) >= 2 and value[0] == value[-1] and value[0] in ("'", '"'):
-            value = value[1:-1]
-        else:
-            value = value.split(" #", 1)[0].rstrip()
-        os.environ[key] = value
-
-
-def default_endpoints() -> dict[str, str]:
+def default_endpoints(mac_host: str | None = None, games_host: str | None = None) -> dict[str, str]:
     """Build optional host defaults from private environment configuration."""
     endpoints = {}
-    for label, env_key in (("mac", "LOCAL_LLM_MAC_HOST"), ("games", "LOCAL_LLM_GAMES_HOST")):
-        host = os.environ.get(env_key)
+    for label, host in (("mac", mac_host), ("games", games_host)):
         if host:
             endpoints[f"{label}-ollama"] = f"http://{host}:11434"
             endpoints[f"{label}-lmstudio"] = f"http://{host}:1234"
@@ -200,13 +176,15 @@ def parse_endpoint(value: str) -> tuple[str, str]:
 
 def main() -> int:
     parser = argparse.ArgumentParser(description="Sync available local LLMs to OpenCode and pi-agent.")
-    parser.add_argument("--endpoint", action="append", type=parse_endpoint, help="override defaults; repeat as NAME=http://host:port")
+    parser.add_argument("--mac-host", type=parse_host, help="LAN/Tailscale IP or hostname for Ollama :11434 and LM Studio :1234")
+    parser.add_argument("--games-host", type=parse_host, help="LAN/Tailscale IP or hostname for Ollama :11434 and LM Studio :1234")
+    parser.add_argument("--endpoint", action="append", type=parse_endpoint, help="custom endpoint; repeat as NAME=http://host:port")
     args = parser.parse_args()
-    dotenv_path = Path(os.environ.get("LOCAL_LLM_ENV_FILE", Path.cwd() / ".env")).expanduser()
-    load_env_file(dotenv_path)
-    endpoints = dict(args.endpoint) if args.endpoint else default_endpoints()
+    if args.endpoint and (args.mac_host or args.games_host):
+        parser.error("use --endpoint or --mac-host/--games-host, not both")
+    endpoints = dict(args.endpoint) if args.endpoint else default_endpoints(args.mac_host, args.games_host)
     if not endpoints:
-        print("No endpoints configured. Set LOCAL_LLM_MAC_HOST/LOCAL_LLM_GAMES_HOST or pass --endpoint.", file=sys.stderr)
+        print("No endpoints configured. Pass --mac-host/--games-host or --endpoint.", file=sys.stderr)
         return 1
     discovered = {}
     api_key = os.environ.get("LOCAL_LLM_API_KEY")
