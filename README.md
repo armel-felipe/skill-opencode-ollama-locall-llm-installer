@@ -1,95 +1,58 @@
 # locall-llm-installer
 
-OpenCode skill that syncs your locally installed Ollama models into the global
-OpenCode config (`~/.config/opencode/opencode.json` or `opencode.jsonc`) and,
-when present, pi-agent's `~/.pi/agent/models.json`.
+Portable OpenCode/pi-agent skill that discovers available local LLMs through
+OpenAI-compatible `/v1/models` APIs and synchronizes their model catalogs.
 
-It updates **only** the `provider.ollama.models` section — every other key in
-your config is left untouched.
+## Default targets
 
-## What it does
+| Machine | Service | Endpoint |
+|---|---|---|
+| Mac host (`LOCAL_LLM_MAC_HOST`) | Ollama `11434` | `http://$LOCAL_LLM_MAC_HOST:11434/v1/models` |
+| Mac host (`LOCAL_LLM_MAC_HOST`) | LM Studio `1234` | `http://$LOCAL_LLM_MAC_HOST:1234/v1/models` |
+| Games host (`LOCAL_LLM_GAMES_HOST`) | Ollama `11434` | `http://$LOCAL_LLM_GAMES_HOST:11434/v1/models` |
+| Games host (`LOCAL_LLM_GAMES_HOST`) | LM Studio `1234` | `http://$LOCAL_LLM_GAMES_HOST:1234/v1/models` |
 
-- Runs `ollama list` to capture every installed model.
-- Updates the `provider.ollama.models` map in the global opencode config.
-- Updates the `providers.ollama.models` list in pi-agent when its config exists.
-- Preserves any existing per-model settings (e.g. `limit`, `options`).
-- Removes invalid `limit` entries (missing `context` or `output`), which
-  would otherwise prevent opencode from starting.
-- Keeps the original file format (`.json` or `.jsonc`, comments included).
-- Is idempotent — running it again never duplicates entries.
+Unavailable endpoints and empty model lists are skipped. The script never
+starts/stops a server, loads a model, or downloads one. If all four endpoints
+are empty or unavailable, it leaves the OpenCode and pi-agent config files
+unchanged. Embedding-only models are omitted from chat model choices.
 
-## Requirements
-
-- [Ollama](https://ollama.com/) installed and running (`ollama serve`).
-- Python 3.10+.
-- OpenCode with a global config at `~/.config/opencode/opencode.json` or
-  `opencode.jsonc`.
-- pi-agent is optional; if `~/.pi/agent/models.json` is absent, it is skipped.
-
-## Usage
-
-Run the bundled script from the skill directory:
+## Install
 
 ```bash
-python scripts/sync_ollama_models.py
+npx skills add github:armel-felipe/skill-opencode-ollama-locall-llm-installer
 ```
 
-Or point to it directly. The skill lives in one of these places depending on
-how it was installed:
+The installer places the skill under `~/.agents/skills/locall-llm-installer/`.
+The script uses `Path.home()` to locate user configs and has no third-party
+Python dependencies.
 
-- Global (skills.sh / `npx skills add`): `~/.agents/skills/locall-llm-installer/`
-- Global (manual): `~/.config/opencode/skills/locall-llm-installer/`
-- Project: `.opencode/skills/locall-llm-installer/`
-
-Examples:
+## Run
 
 ```bash
-# macOS / Linux
-python ~/.agents/skills/locall-llm-installer/scripts/sync_ollama_models.py
+python3 ~/.agents/skills/locall-llm-installer/scripts/sync_ollama_models.py
 ```
 
-```powershell
-# Windows (PowerShell)
-python "$env:USERPROFILE\.agents\skills\locall-llm-installer\scripts\sync_ollama_models.py"
-```
+Set `LOCAL_LLM_MAC_HOST` and/or `LOCAL_LLM_GAMES_HOST` to your own private
+hostname/IP before running. Without these variables, pass explicit
+`--endpoint NAME=URL` values; the skill does not hard-code private network
+addresses in this public repository.
 
-The script prints the config paths it updated and the list of synced models.
-If `ollama list` fails or returns nothing, it exits with an error and leaves
-the config untouched.
+The script updates discovered endpoint providers in `~/.config/opencode/` and,
+if it exists, `~/.pi/agent/models.json`. Existing settings for models still
+available are preserved; unrelated providers are not modified.
 
-After syncing, restart opencode (or run `/models`) so the updated model list
-is picked up.
+Supply `--endpoint NAME=URL` one or more times to replace the default target
+set. For servers requiring bearer authentication, set `LOCAL_LLM_API_KEY` in
+the environment; do not put secrets in repository files.
 
-## Installing the skill
+After syncing, refresh OpenCode `/models` or restart OpenCode and pi-agent.
 
-### From this repo
+## Validation
 
 ```bash
-npx skills add armel-felipe/locall-llm-installer --skill locall-llm-installer --global --yes --agent opencode
+python3 -m unittest discover -s tests -v
 ```
-
-### From a local copy
-
-```bash
-npx skills add /path/to/locall-llm-installer --skill locall-llm-installer --global --yes --agent opencode
-```
-
-## How it works
-
-1. Locates the global opencode config file (`opencode.json` first, then
-   `opencode.jsonc`).
-2. Runs `ollama list` to capture every installed model.
-3. Parses the config, tolerating `//` and `/* */` comments in `.jsonc`.
-4. Updates only the `provider.ollama.models` map: each installed model
-   becomes a key, preserving existing per-model settings and defaulting the
-   display `name` to the model id. The `npm`, `name`, and `options` fields of
-   the provider are only added if absent.
-5. Writes the config back, preserving the original file format.
-
-## Cross-platform
-
-The script resolves the config directory via `Path.home()`, so it works on
-Windows, macOS, and Linux with no path changes.
 
 ## License
 
