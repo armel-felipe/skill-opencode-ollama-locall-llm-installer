@@ -1,76 +1,134 @@
 # locall-llm-installer
 
-Portable OpenCode/pi-agent skill that discovers available local LLMs through
-OpenAI-compatible APIs and synchronizes their model catalogs.
+OpenCode skill that syncs locally installed Ollama, LM Studio, and llama.cpp
+server models into the global OpenCode config (`~/.config/opencode/opencode.json`
+or `opencode.jsonc`) and, when present, pi-agent's `~/.pi/agent/models.json`.
 
-## Default targets
+It updates **only** the matching `provider.<name>.models` sections — every other
+key in your config is left untouched.
 
-| Machine | Service | Endpoint |
-|---|---|---|
-| Host via `--mac-host` | Ollama `11434` | `http://HOST:11434/v1/models` |
-| Host via `--mac-host` | LM Studio `1234` | `http://HOST:1234/v1/models` |
-| Host via `--games-host` | Ollama `11434` | `http://HOST:11434/v1/models` |
-| Host via `--games-host` | LM Studio `1234` | `http://HOST:1234/v1/models` |
-| Host via `--llamacpp-host` | llama.cpp `8080` | `http://HOST:8080/models` then `/v1/models` |
+## What it does
 
-Unavailable endpoints and empty model lists are skipped. The script never
-starts/stops a server, loads a model, or downloads one. If every endpoint is
-empty or unavailable, it leaves the OpenCode and pi-agent config files
-unchanged. Embedding-only models are omitted from chat model choices.
+- Runs `ollama list` and `ollama show` to capture every installed Ollama model.
+- Queries LM Studio's `/api/v1/models` endpoint, falling back to `/v1/models`,
+  to capture downloaded LLMs.
+- Queries a llama.cpp server's router `/models` endpoint (falling back to
+  `/v1/models`) to capture every registered model, including ones not loaded in
+  memory, and probes `/health` for connectivity.
+- Updates the `provider.ollama.models` map in the global opencode config.
+- Updates the `provider.lmstudio.models` map using the OpenAI-compatible server
+  at `http://localhost:1234/v1` by default.
+- Updates the `provider.llamacpp.models` map using the OpenAI-compatible server
+  at `http://<host>:8080/v1`.
+- Updates the `providers.ollama.models` list in pi-agent when its config exists.
+- Updates the `providers.lmstudio.models` list in pi-agent when its config exists.
+- Updates the `providers.llamacpp.models` list in pi-agent when its config exists.
+- Preserves any existing per-model settings (e.g. `limit`, `options`).
+- Preserves the server's original model identifiers and never infers a context
+  window or tool support.
+- Removes invalid `limit` entries (missing `context` or `output`), which
+  would otherwise prevent opencode from starting.
+- Keeps the original file format (`.json` or `.jsonc`, comments included).
+- Is idempotent — running it again never duplicates entries.
 
-## llama.cpp over Tailscale
+## Requirements
 
-llama.cpp's server is OpenAI-compatible. Point the skill at the host running it
-(default port `8080`):
+- [Ollama](https://ollama.com/) installed and running (`ollama serve`) when
+  syncing Ollama.
+- [LM Studio](https://lmstudio.ai/) installed with its local server running
+  when syncing LM Studio (Developer tab or `lms server start`).
+- A [llama.cpp](https://github.com/ggml-org/llama.cpp) server (`llama-server`)
+  reachable on port `8080` when syncing llama.cpp.
+- Python 3.10+.
+- OpenCode with a global config at `~/.config/opencode/opencode.json` or
+  `opencode.jsonc`.
+- pi-agent is optional; if `~/.pi/agent/models.json` is absent, it is skipped.
 
-```bash
-python3 ~/.agents/skills/locall-llm-installer/scripts/sync_ollama_models.py \
-  --llamacpp-host 100.a.b.c
-```
+## Usage
 
-The script writes `http://HOST:8080/v1` as the provider base URL, discovers
-models via the router `GET /models` (every registered model, loaded or not) with
-a `GET /v1/models` fallback, and probes `GET /health`. Model IDs are kept exactly
-as reported; no context window or tool support is assumed.
-
-## Install
-
-```bash
-npx skills add github:armel-felipe/skill-opencode-ollama-locall-llm-installer
-```
-
-The installer places the skill under `~/.agents/skills/locall-llm-installer/`.
-The script uses `Path.home()` to locate user configs and has no third-party
-Python dependencies.
-
-## Run
-
-```bash
-python3 ~/.agents/skills/locall-llm-installer/scripts/sync_ollama_models.py \
-  --mac-host 192.168.1.20 \
-  --games-host 100.x.y.z \
-  --llamacpp-host 100.a.b.c
-```
-
-Use a LAN IP, Tailscale IP, or hostname as each argument. Each host checks its
-service ports (`11434` for Ollama, `1234` for LM Studio, `8080` for llama.cpp).
-No address is stored in the skill or repository. For custom URLs/ports, use
-repeated `--endpoint NAME=URL` instead of host flags.
-
-The script updates discovered endpoint providers in `~/.config/opencode/` and,
-if it exists, `~/.pi/agent/models.json`. Existing settings for models still
-available are preserved; unrelated providers are not modified.
-
-For servers requiring bearer authentication, set `LOCAL_LLM_API_KEY` in the
-environment; do not put secrets in repository files.
-
-After syncing, refresh OpenCode `/models` or restart OpenCode and pi-agent.
-
-## Validation
+Run the bundled script from the skill directory, passing the host(s) to probe:
 
 ```bash
-python3 -m unittest discover -s tests -v
+python scripts/sync_ollama_models.py --mac-host <host> --games-host <host> --llamacpp-host <host>
 ```
+
+Each host is probed on Ollama `11434`, LM Studio `1234`, and llama.cpp `8080`.
+Unavailable servers are skipped; a server that responds with no models is
+skipped too. For nonstandard URLs/ports, pass repeated `--endpoint NAME=URL`
+instead of host flags. Set `LOCAL_LLM_API_KEY` when a server requires a bearer
+token.
+
+### llama.cpp over Tailscale
+
+```bash
+python scripts/sync_ollama_models.py --llamacpp-host <IP_TAILSCALE>
+# or explicitly:
+python scripts/sync_ollama_models.py --endpoint llamacpp=http://<IP_TAILSCALE>:8080
+```
+
+The script writes `http://<IP_TAILSCALE>:8080/v1` as the provider base URL,
+discovers models via the router `GET /models` (all registered models, loaded or
+not) with a `GET /v1/models` fallback, and probes `GET /health`. Model IDs are
+kept exactly as reported; no context window or tool support is assumed.
+
+Or point to it directly. The skill lives in one of these places depending on
+how it was installed:
+
+- Global (skills.sh / `npx skills add`): `~/.agents/skills/locall-llm-installer/`
+- Global (manual): `~/.config/opencode/skills/locall-llm-installer/`
+- Project: `.opencode/skills/locall-llm-installer/`
+
+Examples:
+
+```bash
+# macOS / Linux
+python ~/.agents/skills/locall-llm-installer/scripts/sync_ollama_models.py
+```
+
+```powershell
+# Windows (PowerShell)
+python "$env:USERPROFILE\.agents\skills\locall-llm-installer\scripts\sync_ollama_models.py"
+```
+
+The script prints the config paths it updated and the list of synced models.
+If all requested providers fail or return no models, it exits with an error and
+leaves OpenCode untouched. Start LM Studio's server in Developer, or run
+`lms server start`, before syncing it.
+
+After syncing, restart opencode (or run `/models`) so the updated model list
+is picked up.
+
+## Installing the skill
+
+### From this repo
+
+```bash
+npx skills add armel-felipe/locall-llm-installer --skill locall-llm-installer --global --yes --agent opencode
+```
+
+### From a local copy
+
+```bash
+npx skills add /path/to/locall-llm-installer --skill locall-llm-installer --global --yes --agent opencode
+```
+
+## How it works
+
+1. Locates the global opencode config file (`opencode.json` first, then
+   `opencode.jsonc`).
+2. Runs `ollama list` and queries each endpoint's native model API — Ollama
+   `/api/tags`, LM Studio `/api/v1/models`, llama.cpp router `/models` — falling
+   back to the OpenAI-compatible `/v1/models`. llama.cpp endpoints also get a
+   `GET /health` probe.
+3. Parses the config, tolerating `//` and `/* */` comments in `.jsonc`.
+4. Updates only the matching `provider.<name>.models` maps, preserving existing
+   per-model settings and defaulting the display `name` to the model id.
+5. Writes the config back, preserving the original file format.
+
+## Cross-platform
+
+The script resolves the config directory via `Path.home()`, so it works on
+Windows, macOS, and Linux with no path changes.
 
 ## License
 
