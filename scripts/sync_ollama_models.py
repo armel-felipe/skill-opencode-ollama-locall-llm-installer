@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
-"""Discover available remote Ollama/LM Studio models and sync both clients.
+"""Discover available remote Ollama/LM Studio/llama.cpp models and sync both clients.
 
-Only HTTP GET requests to `/v1/models` are made. This script never starts,
-stops, or loads models/servers. Empty or unavailable endpoints are skipped;
-existing config for those endpoints is preserved.
+Only HTTP GET requests are made (`/models`, `/v1/models`, `/health`). This
+script never starts, stops, or loads models/servers. Empty or unavailable
+endpoints are skipped; existing config for those endpoints is preserved.
 """
 
 from __future__ import annotations
@@ -14,11 +14,15 @@ import os
 import re
 import sys
 import urllib.error
+import urllib.parse
 import urllib.request
 from pathlib import Path
 
 CONFIG_DIR = Path.home() / ".config" / "opencode"
 PI_CONFIG = Path.home() / ".pi" / "agent" / "models.json"
+LLAMA_CPP_PORT = 8080
+
+
 def parse_host(value: str) -> str:
     host = value.strip()
     if not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9.-]*", host):
@@ -26,37 +30,54 @@ def parse_host(value: str) -> str:
     return host
 
 
-def default_endpoints(mac_host: str | None = None, games_host: str | None = None) -> dict[str, str]:
+def default_endpoints(
+    mac_host: str | None = None,
+    games_host: str | None = None,
+    llamacpp_host: str | None = None,
+) -> dict[str, str]:
     """Build optional host defaults from private environment configuration."""
     endpoints = {}
     for label, host in (("mac", mac_host), ("games", games_host)):
         if host:
             endpoints[f"{label}-ollama"] = f"http://{host}:11434"
             endpoints[f"{label}-lmstudio"] = f"http://{host}:1234"
+    if llamacpp_host:
+        endpoints["llamacpp"] = f"http://{llamacpp_host}:{LLAMA_CPP_PORT}"
     return endpoints
 
 
-def endpoint_models_url(base_url: str) -> str:
+def endpoint_root(base_url: str) -> str:
     root = base_url.rstrip("/")
-    return root + ("/models" if root.endswith("/v1") else "/v1/models")
+    return root[:-3] if root.endswith("/v1") else root
 
 
-def get_openai_compatible_models(base_url: str, api_key: str | None = None) -> list[dict]:
-    """Normalize model IDs from OpenAI-compatible/LM Studio JSON responses."""
+def endpoint_models_url(base_url: str) -> str:
+    return endpoint_root(base_url) + "/v1/models"
+
+
+def llama_cpp_models_url(base_url: str) -> str:
+    """llama.cpp router mode lists every registered model at ``/models``."""
+    return endpoint_root(base_url) + "/models"
+
+
+def _read_models(url: str, api_key: str | None = None) -> list[dict]:
+    """Fetch and normalize model IDs from an OpenAI-compatible/LM Studio payload."""
     headers = {"Accept": "application/json"}
     if api_key:
         headers["Authorization"] = f"Bearer {api_key}"
-    request = urllib.request.Request(endpoint_models_url(base_url), headers=headers)
+    request = urllib.request.Request(url, headers=headers)
     with urllib.request.urlopen(request, timeout=4) as response:
         payload = json.loads(response.read().decode("utf-8"))
-    if not isinstance(payload, dict):
-        raise ValueError("/v1/models returned a non-object JSON response")
-
-    raw_models = payload.get("data", payload.get("models", []))
+    if isinstance(payload, list):
+        raw_models = payload
+    elif isinstance(payload, dict):
+        raw_models = payload.get("data", payload.get("models", []))
+    else:
+        raise ValueError("model endpoint returned a non-object JSON response")
     if raw_models is None:
         return []
     if not isinstance(raw_models, list):
-        raise ValueError("/v1/models did not contain a model list")
+        raise ValueError("model endpoint did not contain a model list")
 
     models = []
     seen = set()
@@ -72,6 +93,62 @@ def get_openai_compatible_models(base_url: str, api_key: str | None = None) -> l
             seen.add(model_id)
             models.append({"id": model_id})
     return models
+
+
+def get_openai_compatible_models(base_url: str, api_key: str | None = None) -> list[dict]:
+    """Normalize model IDs from OpenAI-compatible/LM Studio JSON responses."""
+    return _read_models(endpoint_models_url(base_url), api_key)
+
+
+def discover_models(base_url: str, api_key: str | None = None) -> tuple[list[dict], str]:
+    """Discover models via the llama.cpp router ``/models``, then ``/v1/models``.
+
+    Returns ``(models, source_url_or_error)``. The router path is tried first
+    because it lists every registered model, including ones not currently loaded
+    in memory. Model IDs are preserved exactly as reported; no context window or
+    tool support is inferred.
+    """
+    errors = []
+    for url in (llama_cpp_models_url(base_url), endpoint_models_url(base_url)):
+        try:
+            models = _read_models(url, api_key)
+        except (OSError, ValueError, urllib.error.URLError, json.JSONDecodeError) as exc:
+            errors.append(f"{url} ({exc})")
+            continue
+        if models:
+            return models, url
+    return [], "; ".join(errors) if errors else "no models"
+
+
+def check_health(base_url: str, api_key: str | None = None) -> str | None:
+    """Best-effort ``GET /health`` probe (llama.cpp). Returns status or None."""
+    headers = {"Accept": "application/json"}
+    if api_key:
+        headers["Authorization"] = f"Bearer {api_key}"
+    try:
+        request = urllib.request.Request(endpoint_root(base_url) + "/health", headers=headers)
+        with urllib.request.urlopen(request, timeout=4) as response:
+            payload = json.loads(response.read().decode("utf-8"))
+    except (OSError, ValueError, urllib.error.URLError, json.JSONDecodeError):
+        return None
+    if isinstance(payload, dict) and isinstance(payload.get("status"), str):
+        return payload["status"]
+    return "ok"
+
+
+def looks_like_llamacpp(name: str, url: str) -> bool:
+    """True when an endpoint is (or is named like) a llama.cpp server.
+
+    Matches the ``llamacpp``/``llama-cpp``/``llama.cpp`` name forms only, so an
+    Ollama endpoint (``mac-ollama``) is not mistaken for llama.cpp.
+    """
+    lowered = name.lower()
+    if "llamacpp" in lowered or "llama-cpp" in lowered or "llama.cpp" in lowered:
+        return True
+    try:
+        return urllib.parse.urlsplit(url).port == LLAMA_CPP_PORT
+    except ValueError:
+        return False
 
 
 def find_config() -> Path | None:
@@ -178,26 +255,26 @@ def main() -> int:
     parser = argparse.ArgumentParser(description="Sync available local LLMs to OpenCode and pi-agent.")
     parser.add_argument("--mac-host", type=parse_host, help="LAN/Tailscale IP or hostname for Ollama :11434 and LM Studio :1234")
     parser.add_argument("--games-host", type=parse_host, help="LAN/Tailscale IP or hostname for Ollama :11434 and LM Studio :1234")
+    parser.add_argument("--llamacpp-host", type=parse_host, help=f"llama.cpp server host (OpenAI-compatible, port {LLAMA_CPP_PORT})")
     parser.add_argument("--endpoint", action="append", type=parse_endpoint, help="custom endpoint; repeat as NAME=http://host:port")
     args = parser.parse_args()
-    if args.endpoint and (args.mac_host or args.games_host):
-        parser.error("use --endpoint or --mac-host/--games-host, not both")
-    endpoints = dict(args.endpoint) if args.endpoint else default_endpoints(args.mac_host, args.games_host)
+    if args.endpoint and (args.mac_host or args.games_host or args.llamacpp_host):
+        parser.error("use --endpoint or --mac-host/--games-host/--llamacpp-host, not both")
+    endpoints = dict(args.endpoint) if args.endpoint else default_endpoints(args.mac_host, args.games_host, args.llamacpp_host)
     if not endpoints:
-        print("No endpoints configured. Pass --mac-host/--games-host or --endpoint.", file=sys.stderr)
+        print("No endpoints configured. Pass --mac-host/--games-host/--llamacpp-host or --endpoint.", file=sys.stderr)
         return 1
     discovered = {}
     api_key = os.environ.get("LOCAL_LLM_API_KEY")
     for name, url in endpoints.items():
-        try:
-            models = get_openai_compatible_models(url, api_key)
-            if not models:
-                print(f"skip {name}: /v1/models returned no models")
-                continue
-            discovered[name] = (url, models)
-            print(f"found {len(models)} model(s) on {name}: {', '.join(m['id'] for m in models)}")
-        except (OSError, ValueError, urllib.error.URLError, json.JSONDecodeError) as exc:
-            print(f"skip {name}: endpoint unavailable or invalid response ({exc})", file=sys.stderr)
+        if looks_like_llamacpp(name, url):
+            print(f"health {name}: {check_health(url, api_key) or 'unreachable'}")
+        models, source = discover_models(url, api_key)
+        if not models:
+            print(f"skip {name}: no models ({source})", file=sys.stderr)
+            continue
+        discovered[name] = (url, models)
+        print(f"found {len(models)} model(s) on {name} via {source}: {', '.join(m['id'] for m in models)}")
 
     if not discovered:
         print("No endpoints returned models; no servers started and configs unchanged.", file=sys.stderr)
