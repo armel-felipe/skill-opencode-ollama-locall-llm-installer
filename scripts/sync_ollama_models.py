@@ -17,7 +17,7 @@ from pathlib import Path
 CONFIG_DIR = Path.home() / ".config" / "opencode"
 PI_CONFIG = Path.home() / ".pi" / "agent" / "models.json"
 DEFAULT_LM_STUDIO_URL = "http://localhost:1234"
-LLAMA_CPP_PORT = 8080
+LLAMA_CPP_PORT = 18080
 
 
 def parse_host(value: str) -> str:
@@ -526,7 +526,7 @@ def main() -> None:
     )
     parser.add_argument(
         "--host", action="append", metavar="HOST[:PORT]",
-        help="host or host:port to probe (Ollama :11434, LM Studio :1234, llama.cpp :8080); repeatable",
+        help=f"host or host:port to probe (Ollama :11434, LM Studio :1234, llama.cpp :{LLAMA_CPP_PORT}); repeatable",
     )
     parser.add_argument(
         "--mac-host", type=parse_host,

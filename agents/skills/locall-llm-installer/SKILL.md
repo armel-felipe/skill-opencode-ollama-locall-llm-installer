@@ -27,7 +27,7 @@ The bundled script `scripts/sync_ollama_models.py`:
 
 1. Accepts `--mac-host`, `--games-host`, and/or `--llamacpp-host` at invocation
    time. Each supplied LAN IP, Tailscale IP, or hostname is checked on Ollama
-   `11434`, LM Studio `1234`, and llama.cpp `8080`; host values are not stored
+   `11434`, LM Studio `1234`, and llama.cpp `18080`; host values are not stored
    in the skill.
 2. Queries each service's native model endpoint — Ollama `/api/tags`, LM Studio
    `/api/v1/models`, llama.cpp router `/models` — and falls back to the
@@ -87,15 +87,15 @@ are empty/unavailable, it leaves OpenCode and pi-agent configs untouched.
 ## llama.cpp server (remote, e.g. over Tailscale)
 
 llama.cpp's server is OpenAI-compatible. Point the skill at the host running
-it; the default port is `8080`:
+it; the configured port is `18080`:
 
 ```bash
 python scripts/sync_ollama_models.py --llamacpp-host <IP_TAILSCALE>
 # or an explicit endpoint:
-python scripts/sync_ollama_models.py --endpoint llamacpp=http://<IP_TAILSCALE>:8080
+python scripts/sync_ollama_models.py --endpoint llamacpp=http://<IP_TAILSCALE>:18080
 ```
 
-- Base URL written to config: `http://<IP_TAILSCALE>:8080/v1`
+- Base URL written to config: `http://<IP_TAILSCALE>:18080/v1`
 - Discovery: `GET /models` (router mode — lists every registered model,
   including ones not loaded in memory) then `GET /v1/models` (OpenAI-compatible).
 - Connectivity: `GET /health` is probed and its status printed.

@@ -86,16 +86,16 @@ class GlobalSyncModelsTests(unittest.TestCase):
         self.assertEqual(endpoints["mac-lmstudio"], "http://192.0.2.10:1234")
         self.assertEqual(endpoints["games-ollama"], "http://games.tailnet:11434")
         self.assertEqual(endpoints["games-lmstudio"], "http://games.tailnet:1234")
-        self.assertEqual(endpoints["llamacpp"], "http://100.64.0.8:8080")
+        self.assertEqual(endpoints["llamacpp"], "http://100.64.0.8:18080")
 
     def test_host_expansion_includes_llamacpp_and_explicit_port(self):
         endpoints = sync_models._host_endpoints("100.64.0.8")
-        self.assertEqual(endpoints["100.64.0.8-llamacpp"], "http://100.64.0.8:8080")
+        self.assertEqual(endpoints["100.64.0.8-llamacpp"], "http://100.64.0.8:18080")
         self.assertEqual(sync_models._host_endpoints("server:8188"), {"server-8188": "http://server:8188"})
 
     def test_llamacpp_detection_does_not_mistake_ollama(self):
         self.assertTrue(sync_models._looks_like_llamacpp("llamacpp", "http://host:9999"))
-        self.assertTrue(sync_models._looks_like_llamacpp("remote", "http://host:8080"))
+        self.assertTrue(sync_models._looks_like_llamacpp("remote", "http://host:18080"))
         self.assertFalse(sync_models._looks_like_llamacpp("mac-ollama", "http://host:11434"))
 
 

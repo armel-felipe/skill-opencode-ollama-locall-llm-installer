@@ -19,7 +19,7 @@ key in your config is left untouched.
 - Updates the `provider.lmstudio.models` map using the OpenAI-compatible server
   at `http://localhost:1234/v1` by default.
 - Updates the `provider.llamacpp.models` map using the OpenAI-compatible server
-  at `http://<host>:8080/v1`.
+  at `http://<host>:18080/v1`.
 - Updates the `providers.ollama.models` list in pi-agent when its config exists.
 - Updates the `providers.lmstudio.models` list in pi-agent when its config exists.
 - Updates the `providers.llamacpp.models` list in pi-agent when its config exists.
@@ -38,7 +38,7 @@ key in your config is left untouched.
 - [LM Studio](https://lmstudio.ai/) installed with its local server running
   when syncing LM Studio (Developer tab or `lms server start`).
 - A [llama.cpp](https://github.com/ggml-org/llama.cpp) server (`llama-server`)
-  reachable on port `8080` when syncing llama.cpp.
+  reachable on port `18080` when syncing llama.cpp.
 - Python 3.10+.
 - OpenCode with a global config at `~/.config/opencode/opencode.json` or
   `opencode.jsonc`.
@@ -52,7 +52,7 @@ Run the bundled script from the skill directory, passing the host(s) to probe:
 python scripts/sync_ollama_models.py --mac-host <host> --games-host <host> --llamacpp-host <host>
 ```
 
-Each host is probed on Ollama `11434`, LM Studio `1234`, and llama.cpp `8080`.
+Each host is probed on Ollama `11434`, LM Studio `1234`, and llama.cpp `18080`.
 Unavailable servers are skipped; a server that responds with no models is
 skipped too. For nonstandard URLs/ports, pass repeated `--endpoint NAME=URL`
 instead of host flags. Set `LOCAL_LLM_API_KEY` when a server requires a bearer
@@ -63,10 +63,10 @@ token.
 ```bash
 python scripts/sync_ollama_models.py --llamacpp-host <IP_TAILSCALE>
 # or explicitly:
-python scripts/sync_ollama_models.py --endpoint llamacpp=http://<IP_TAILSCALE>:8080
+python scripts/sync_ollama_models.py --endpoint llamacpp=http://<IP_TAILSCALE>:18080
 ```
 
-The script writes `http://<IP_TAILSCALE>:8080/v1` as the provider base URL,
+The script writes `http://<IP_TAILSCALE>:18080/v1` as the provider base URL,
 discovers models via the router `GET /models` (all registered models, loaded or
 not) with a `GET /v1/models` fallback, and probes `GET /health`. Model IDs are
 kept exactly as reported; no context window or tool support is assumed.
